@@ -1,4 +1,4 @@
-### sync.Map源码研究背景
+# sync.Map源码研究背景
 
 > 自己项目中使用了sync.Map，但是引起性能问题，后面改为管道方式，显著提升了性能。
 >
@@ -12,7 +12,7 @@
 > 1. 为什么使用sync.Map后自己项目的性能 会降低
 > 2. 自己使用方式是否错了？官方封装sync.Map主要适用场景是什么？应该怎么用？
 
-#### sync.Map 使用项目情况  & 优化后的结构
+# sync.Map 使用项目情况  & 优化后的结构
 
 ```go
 //实践中使用项目，具体实现逻辑比较复杂，不适合公开。下面是使用简单代码，实现了项目中的逻辑。
@@ -89,7 +89,7 @@ func double(a int) int {
 }
 ```
 
-#### 官方注释
+### 官方注释
 
 官方给的两个主要应用场景：
 
@@ -100,7 +100,7 @@ In these two cases, use of a Map may significantly reduce lock contention compar
 
 **有限的应用场景，很多场景并不适合使用sync.Map，用错了场景反而会引起性能下降。**
 
-#### 源码分析
+# 源码分析
 
 ```go
 //sync.Map源码定义主要结构
@@ -122,7 +122,7 @@ type entry struct {
 }
 ```
 
-##### 看结构体具体字段说明：
+### 结构体具体字段说明
 
 `mu` 涉及到dirty map操作时，进行加锁操作
 
@@ -138,7 +138,7 @@ type entry struct {
 
 `amended`true表明dirty map中存储了readOnly中没有存储的字段
 
-##### 看函数具体执行：
+### 函数具体执行
 
 - Load()
 
@@ -170,7 +170,7 @@ readOnly中不存在且数据非expunge，且read.amended为true，使用mu lock
 
   如果amended为false，说明值readOnly中都有，直接从readOnly中取值。就不用加锁了。
 
-##### expunge数据
+### expunge数据
 
 ```go
 func (m *Map) dirtyLocked() {
@@ -216,7 +216,7 @@ syncMap.LoadOrStore("2", "4")
 
 ```
 
-其中readOnly和dirty的转换关键点：
+### readOnly和dirty的转换关键点
 
 1. dirty中不存储expunge数据
 2. dirty数据转换为readOnly，且dirty数据置换为空之后，再次存储数据
@@ -224,7 +224,7 @@ syncMap.LoadOrStore("2", "4")
    - 新存储的值也存储到dirty中
    - amended置为true时，标识dirty存在数据，但是readOnly中没有
 
-readOnly都会做哪些操作：
+### readOnly都会做哪些操作
 
 - Store
 
@@ -242,17 +242,17 @@ readOnly都会做哪些操作：
 >
 > dirty中不存储expunge数据
 >
-> 当调用Store方法，且该值在readOnly中不存在的时候，会将值存在dirty中，且会将readOnly中非expunge数据全部写入dirty。
+> **当调用Store方法，且该新值在readOnly中不存在的时候，dirty为nil，（之前数据都被load一遍，值全部放到了readOnly中，dirty被置为nil）会将新值存在dirty中，且会将readOnly中非expunge数据全部写入dirty。**这步操作数据就会**冗余存储**。
 
 为什么expunge数据不入dirty，但是readOnly中要存储？
 
 > 没有必要再次存储一堆没用的数据，占用额外的内存，后面dirty数据都平均读取一遍及其以上后，dirty数据会重新覆盖readOnly数据，那个时候readOnly中存储的expunge标识数据也会被擦除。
 
-#### 总结
+# 总结
+
+> sync.Map的设计思想属于以空间换时间，double map，一个read map（no mutex），一个dirty map（mutex）。
 
 1. sync.Map降低并发的关键在于 readOnly和dirty的搭配。readOnly 用到了atomic.Value不需要使用锁。能显著降低锁竞争，提高性能。
-
->  属于以空间换时间，double map，一个read map（no mutex），一个dirty map（mutex）。
 
 2. 使用场景比较适合写入后，频繁读取的场景，能显著的降低锁竞争。
 3. 在上面列出的项目中，自己使用错了场景，自己的业务场景（存储一次后，马上全部读取一遍，就结束了操作）不仅没有任何降低使用锁的竞争的成本，还多了一次原子更新操作（将dirty的值赋值给readOnly），也就是自己的项目并不适合使用sync.Map

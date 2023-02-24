@@ -172,7 +172,7 @@ goroutine的三种状态：
 
 GPM全局示意图：
 
-![image-20210315215511980](/Users/yifeng8/baipang/x/go-project/go-sourcecode-reading/assets/image-20210315215511980.png)
+![image-20230224154005453](./assets/image-20230224154005453.png)
 
 ## M：N
 

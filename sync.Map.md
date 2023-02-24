@@ -60,7 +60,7 @@ func getResult(aList []int) (result map[int]int) {
 //改造版本（性能提升版本）
 func getResultOptimize(aList []int) (result map[int]int) {
   result = make(map[int]int)
-  ch := make(map[int]int)
+  ch := make(chan map[int]int)
   var wg sync.WaitGroup
   
   for _, a := range aList {

@@ -142,13 +142,13 @@ type entry struct {
 
 - Load()
 
-优先从readOnly中读取（不需要mu lock，从atomic.Value()中直接读取map，从中获取数据）
+  优先从readOnly中读取（不需要mu lock，从atomic.Value()中直接读取map，从中获取数据）
 
-readOnly中不存在且数据非expunge，且read.amended为true，使用mu lock，再次判断readOnly中不存在，从dirty中读取值，调用mislocked()
+  readOnly中不存在且数据非expunge，且read.amended为true，使用mu lock，再次判断readOnly中不存在，从dirty中读取值，调用mislocked()
 
-> 这里面之前判断一次readOnly中不存在，但是后面加锁又判断一次readOnly是否存在
->
-> 重复判断的原因在于第二次，会判断是否为expunge，如果为expunge，不仅会修改readOnly中的值，且会将值存储在dirty中，所以需要进行加锁。
+  > 这里面之前判断一次readOnly中不存在，但是后面加锁又判断一次readOnly是否存在
+  >
+  > 重复判断的原因在于第二次，会判断是否为expunge，如果为expunge，不仅会修改readOnly中的值，且会将值存储在dirty中，所以需要进行加锁。
 
 - LoadOrStore （同Load()）
 

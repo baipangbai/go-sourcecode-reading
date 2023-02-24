@@ -234,19 +234,19 @@ syncMap.LoadOrStore("2", "4")
 
 - LoadOrStore *同Store*
 
-> 上面能看出来，只使用Store和Load，其实就是普通的map & Mutex 结合版本而已，加了一个dirty map => read map的逻辑。
->
-> 主要的性能优化，也就是锁竞争。唯一可以体现的就是dirty map中的数据更新到read map后。下次load数据，不用mutex，直接从readOnly中读取就可以了。也就是写入后，频繁的读（每个数据平均超过一次）会降低锁竞争的次数。
->
-> 其中amended用来标识，dirty中存在readOnly中没有的数据
->
-> dirty中不存储expunge数据
->
-> **当调用Store方法，且该新值在readOnly中不存在的时候，dirty为nil，（之前数据都被load一遍，值全部放到了readOnly中，dirty被置为nil）会将新值存在dirty中，且会将readOnly中非expunge数据全部写入dirty。**这步操作数据就会**冗余存储**。
+  > 上面能看出来，只使用Store和Load，其实就是普通的map & Mutex 结合版本而已，加了一个dirty map => read map的逻辑。
+  >
+  > 主要的性能优化，也就是锁竞争。唯一可以体现的就是dirty map中的数据更新到read map后。下次load数据，不用mutex，直接从readOnly中读取就可以了。也就是写入后，频繁的读（每个数据平均超过一次）会降低锁竞争的次数。
+  >
+  > 其中amended用来标识，dirty中存在readOnly中没有的数据
+  >
+  > dirty中不存储expunge数据
+  >
+  > **当调用Store方法，且该新值在readOnly中不存在的时候，dirty为nil，（之前数据都被load一遍，值全部放到了readOnly中，dirty被置为nil）会将新值存在dirty中，且会将readOnly中非expunge数据全部写入dirty。**这步操作数据就会**冗余存储**。
 
-为什么expunge数据不入dirty，但是readOnly中要存储？
+### 为什么expunge数据不入dirty，但是readOnly中要存储？
 
-> 没有必要再次存储一堆没用的数据，占用额外的内存，后面dirty数据都平均读取一遍及其以上后，dirty数据会重新覆盖readOnly数据，那个时候readOnly中存储的expunge标识数据也会被擦除。
+没有必要再次存储一堆没用的数据，占用额外的内存，后面dirty数据都平均读取一遍及其以上后，dirty数据会重新覆盖readOnly数据，那个时候readOnly中存储的expunge标识数据也会被擦除。
 
 # 总结
 

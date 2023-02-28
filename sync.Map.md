@@ -540,7 +540,7 @@ BenchmarkStoreSync-8             	 1478697	       689.5 ns/op
 **/
 
 
-//注意的问题，轻易不要使用sync.Map，发现在一次写入，3次读取情况下，性能还不如自己map & mutex实现的性能
+//注意的问题，轻易不要使用sync.Map，发现在一次写入，N次读取情况下，性能还不如自己map & mutex实现的性能
 func BenchmarkMoreLoadRegularFound(b *testing.B) {
 	nums := nrand(b.N)
 	rm := NewRegularIntMap()
@@ -592,8 +592,6 @@ func BenchmarkMoreLoadSyncFound(b *testing.B) {
 
 BenchmarkMoreLoadRegularFound-8   	   10000	    447796 ns/op
 BenchmarkMoreLoadSyncFound-8      	   10000	    718739 ns/op
-
-//值得注意的是 即使在写入一次，后读取三次，读取N次依旧是自己通过map & mutex效率高
 
 ```
 

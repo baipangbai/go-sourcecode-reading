@@ -597,8 +597,6 @@ BenchmarkMoreLoadSyncFound-8      	   10000	    718739 ns/op
 
 ```
 
-
-
 # 总结
 
 > sync.Map的设计思想属于以空间换时间，double map，一个read map（no mutex），一个dirty map（mutex）。

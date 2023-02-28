@@ -19,10 +19,12 @@
 ```go
 //实践中使用项目，具体实现逻辑比较复杂，不适合公开。下面是使用简单代码，实现了项目中的逻辑。
 
-
 //使用sync.Map 项目使用情况
 func main() {
-  aList := make([]int, 0, 100)
+ 	aList := make([]int, 100)
+	for i := range aList {
+		aList[i] = i
+	}
   
   fmt.Println(getResult(aList))
 }
@@ -32,6 +34,7 @@ func getResult(aList []int) (result map[int]int) {
   
   var syncMap sync.Map
   var wg sync.WaitGroup
+  
   
 	for _, a := range aList {
     wg.Add(1)
@@ -67,7 +70,7 @@ func getResultOptimize(aList []int) (result map[int]int) {
     wg.Add(1)
     go func(t int){
       defer wg.Done()
-      ch <- map[int]int{a: double(t)}
+      ch <- map[int]int{t: double(t)}
     }(a)
   }
   
@@ -250,12 +253,363 @@ syncMap.LoadOrStore("2", "4")
 
 没有必要再次存储一堆没用的数据，占用额外的内存，后面dirty数据都平均读取一遍及其以上后，dirty数据会重新覆盖readOnly数据，那个时候readOnly中存储的expunge标识数据也会被擦除。
 
+# 性能对比
+
+sync.Map和map & mutex压测对比 & ch代替方案
+
+> [sync.Map，map & mutex性能对比参考文章](https://medium.com/@deckarep/the-new-kid-in-town-gos-sync-map-de24a6bf7c2c#id_token=eyJhbGciOiJSUzI1NiIsImtpZCI6IjU5NjJlN2EwNTljN2Y1YzBjMGQ1NmNiYWQ1MWZlNjRjZWVjYTY3YzYiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCJuYmYiOjE2NzY5NDUyNTYsImF1ZCI6IjIxNjI5NjAzNTgzNC1rMWs2cWUwNjBzMnRwMmEyamFtNGxqZGNtczAwc3R0Zy5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbSIsInN1YiI6IjExNzcxMDE4ODcyNTA1Mzk5NDU0MiIsImVtYWlsIjoiYmFpcGFuZ2JhaUBnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiYXpwIjoiMjE2Mjk2MDM1ODM0LWsxazZxZTA2MHMydHAyYTJqYW00bGpkY21zMDBzdHRnLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwibmFtZSI6InBhbmcgYmFpIiwicGljdHVyZSI6Imh0dHBzOi8vbGgzLmdvb2dsZXVzZXJjb250ZW50LmNvbS9hL0FFZEZUcDdSOVhteUJaNGtfanVBTlo4UnZZOVFIMU01T1BQUWI4MnppYW5vPXM5Ni1jIiwiZ2l2ZW5fbmFtZSI6InBhbmciLCJmYW1pbHlfbmFtZSI6ImJhaSIsImlhdCI6MTY3Njk0NTU1NiwiZXhwIjoxNjc2OTQ5MTU2LCJqdGkiOiIzNTk2MDE3ZmVlMTlmM2FjMTU1NzBlYzg5OTRkNzgzOTc4M2Y2ZDU1In0.IzrhjNgR71Yu2nYLlCNdRxOekLpY0kEJyQ2pQCTN6w3hCwaBgOpnFbZqWQ8bx3MswmpyUNu9Ew57H9R1aSyha_ZaxZSiZlkEhqUkDo4OYx-DwjEbBMDi1D_GCtx6If7BS8grEAVagQ5T4GF8B0OYTmjBZ7jt4apafBzH_r5pOutS7BfdzziCVSZn87p7faCVMH4YDfy0lFJJGurV1YMd3fNEEDAUq2vamM-JYY6iZasl_4G7UVmmz9c0fuLLOkLNp_g4yNYzo6Td-fRnI5jkJ7PX4IU4lU4us7t6FKmZ1_qBRcuQ6kUACrE3IP7MNAEieTeZFvSkIM-cqHSPFfKyCQ)
+>
+> [go bench使用介绍](https://dave.cheney.net/2013/06/30/how-to-write-benchmarks-in-go)
+
+```go
+//normal map & mutex type RegularIntMap struct {
+type RegularIntMap struct {
+	sync.RWMutex
+	internal map[int]int
+}
+
+func NewRegularIntMap() *RegularIntMap {
+	return &RegularIntMap{
+		internal: make(map[int]int),
+	}
+}
+
+func (rm *RegularIntMap) Load(key int) (value int, ok bool) {
+	rm.RLock()
+	result, ok := rm.internal[key]
+	rm.RUnlock()
+	return result, ok
+}
+
+func (rm *RegularIntMap) Delete(key int) {
+	rm.Lock()
+	delete(rm.internal, key)
+	rm.Unlock()
+}
+
+func (rm *RegularIntMap) Store(key, value int) {
+	rm.Lock()
+	rm.internal[key] = value
+	rm.Unlock()
+}
+
+func nrand(n int) []int {
+	i := make([]int, n)
+
+	for ind := range i {
+		i[ind] = rand.Int()
+	}
+	return i
+}
+
+//store bench compare
+func BenchmarkStoreRegular(b *testing.B) {
+	nums := nrand(b.N)
+	rm := NewRegularIntMap()
+	b.ResetTimer()
+	for _, v := range nums {
+		rm.Store(v, v)
+	}
+}
+
+func BenchmarkStoreSync(b *testing.B) {
+	nums := nrand(b.N)
+	var sm sync.Map
+	b.ResetTimer()
+	for _, v := range nums {
+		sm.Store(v, v)
+	}
+}
+
+//delete bench compare
+func BenchmarkDeleteRegular(b *testing.B) {
+	nums := nrand(b.N)
+	rm := NewRegularIntMap()
+	for _, v := range nums {
+		rm.Store(v, v)
+	}
+
+	b.ResetTimer()
+	for _, v := range nums {
+		rm.Delete(v)
+	}
+}
+
+func BenchmarkDeleteSync(b *testing.B) {
+	nums := nrand(b.N)
+	var sm sync.Map
+	for _, v := range nums {
+		sm.Store(v, v)
+	}
+
+	b.ResetTimer()
+	for _, v := range nums {
+		sm.Delete(v)
+	}
+}
+
+//load bench compare
+var globalResult int
+
+func BenchmarkLoadRegularFound(b *testing.B) {
+	nums := nrand(b.N)
+	rm := NewRegularIntMap()
+	for _, v := range nums {
+		rm.Store(v, v)
+	}
+
+	currentResult := 0
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		currentResult, _ = rm.Load(nums[i])
+	}
+	globalResult = currentResult
+}
+
+func BenchmarkLoadRegularNotFound(b *testing.B) {
+	nums := nrand(b.N)
+	rm := NewRegularIntMap()
+	for _, v := range nums {
+		rm.Store(v, v)
+	}
+	currentResult := 0
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		currentResult, _ = rm.Load(i)
+	}
+	globalResult = currentResult
+}
+
+func BenchmarkLoadSyncFound(b *testing.B) {
+	nums := nrand(b.N)
+	var sm sync.Map
+	for _, v := range nums {
+		sm.Store(v, v)
+	}
+	currentResult := 0
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		r, ok := sm.Load(nums[i])
+		if ok {
+			currentResult = r.(int)
+		}
+	}
+	globalResult = currentResult
+}
+
+func BenchmarkLoadSyncNotFound(b *testing.B) {
+	nums := nrand(b.N)
+	var sm sync.Map
+	for _, v := range nums {
+		sm.Store(v, v)
+	}
+	currentResult := 0
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		r, ok := sm.Load(i)
+		if ok {
+			currentResult = r.(int)
+		}
+	}
+	globalResult = currentResult
+}
+
+
+//concurrent bench compare（实践中使用项目，具体实现逻辑比较复杂，不适合公开。下面是使用简单代码，实现了项目中的逻辑。）
+func BenchmarkConcurrentSync(b *testing.B) {
+
+	result := make(map[int]int)
+	aList := make([]int, 100)
+	for i := range aList {
+		aList[i] = i
+	}
+
+	var syncMap sync.Map
+	var wg sync.WaitGroup
+	for _, a := range aList {
+		wg.Add(1)
+		go func(t int) {
+			defer wg.Done()
+			syncMap.Store(t, double(t))
+		}(a)
+	}
+	wg.Wait()
+
+	for _, t := range aList {
+		val, exist := syncMap.Load(t)
+		if !exist {
+			continue
+		}
+		v, ok := val.(int)
+		if !ok {
+			continue
+		}
+		result[t] = v
+	}
+}
+
+func BenchmarkConcurrentRegular(b *testing.B) {
+
+	result := make(map[int]int)
+	aList := make([]int, 100)
+	for i := range aList {
+		aList[i] = i
+	}
+
+	rm := NewRegularIntMap()
+	var wg sync.WaitGroup
+	for _, a := range aList {
+		wg.Add(1)
+		go func(t int) {
+			defer wg.Done()
+			rm.Store(t, double(t))
+		}(a)
+	}
+	wg.Wait()
+	for _, t := range aList {
+		val, exist := rm.Load(t)
+		if !exist {
+			continue
+		}
+		result[t] = val
+	}
+}
+
+func BenchmarkConcurrentCh(b *testing.B) {
+
+	result := make(map[int]int)
+	ch := make(chan map[int]int)
+	var wg sync.WaitGroup
+
+	aList := make([]int, 100)
+	for i := range aList {
+		aList[i] = i
+	}
+
+	for _, a := range aList {
+		wg.Add(1)
+		go func(t int) {
+			defer wg.Done()
+			ch <- map[int]int{t: double(t)}
+		}(a)
+	}
+
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+
+	for val := range ch {
+		for a, b := range val {
+			result[a] = b
+		}
+	}
+	return
+}
+func double(a int) int {
+	return a * a
+}
+
+/**压测对比
+BenchmarkConcurrentSync-8        	1000000000	         0.0003446 ns/op
+BenchmarkConcurrentRegular-8     	1000000000	         0.0001874 ns/op
+BenchmarkConcurrentCh-8          	1000000000	         0.0001813 ns/op
+//项目中的使用场景，sync.Map性能最差，其次自己构造的map & mutex，最优为ch替代用法(从压测看map & mutex 和 ch 效果差不多
+
+BenchmarkConcurrentRegular-8     	1000000000	         0.0001915 ns/op
+BenchmarkConcurrentCh-8          	1000000000	         0.0001569 ns/op
+又压了一次，效果不稳定，不过在该使用场景下，性能都比sync.Map要高
+)
+
+BenchmarkDeleteRegular-8         	 9092030	       181.1 ns/op
+BenchmarkDeleteSync-8            	 5493274	       256.0 ns/op
+//存储后遍历一遍删除，不适合使用sync.Map
+
+BenchmarkLoadRegularFound-8      	14966640	       132.0 ns/op
+BenchmarkLoadSyncFound-8         	 6126120	       242.9 ns/op
+//存储后，只load一遍，不适合使用sync.Map
+
+BenchmarkLoadRegularNotFound-8   	16666842	       104.0 ns/op
+BenchmarkLoadSyncNotFound-8      	 6664221	       244.3 ns/op
+//存储后，found都不存在，不适合使用sync.Map
+
+BenchmarkStoreRegular-8          	 5940949	       241.6 ns/op
+BenchmarkStoreSync-8             	 1478697	       689.5 ns/op
+//只Store，并不调用其他方法不适合使用sync.Map
+**/
+
+
+//注意的问题，轻易不要使用sync.Map，发现在一次写入，3次读取情况下，性能还不如自己map & mutex实现的性能
+func BenchmarkMoreLoadRegularFound(b *testing.B) {
+	nums := nrand(b.N)
+	rm := NewRegularIntMap()
+	for _, v := range nums {
+		rm.Store(v, v)
+	}
+
+	currentResult := 0
+	b.ResetTimer()
+
+	loadFunc := func(bN int) {
+		for i := 0; i < bN; i++ {
+			currentResult, _ = rm.Load(nums[i])
+		}
+	}
+
+	for i := 0; i < b.N; i++ {
+		loadFunc(b.N)
+	}
+
+	globalResult = currentResult
+}
+
+func BenchmarkMoreLoadSyncFound(b *testing.B) {
+	nums := nrand(b.N)
+	var sm sync.Map
+	for _, v := range nums {
+		sm.Store(v, v)
+	}
+	currentResult := 0
+	b.ResetTimer()
+
+	loadFunc := func(bN int) {
+		for i := 0; i < bN; i++ {
+			r, ok := sm.Load(nums[i])
+			if ok {
+				currentResult = r.(int)
+			}
+		}
+	}
+
+	for i := 0; i < b.N; i++ {
+		loadFunc(b.N)
+
+	}
+
+	globalResult = currentResult
+}
+
+BenchmarkMoreLoadRegularFound-8   	   10000	    447796 ns/op
+BenchmarkMoreLoadSyncFound-8      	   10000	    718739 ns/op
+
+//值得注意的是 即使在写入一次，后读取三次，读取N次依旧是自己通过map & mutex效率高
+
+```
+
+
+
 # 总结
 
 > sync.Map的设计思想属于以空间换时间，double map，一个read map（no mutex），一个dirty map（mutex）。
 
+理论上讲：
+
 1. sync.Map降低并发的关键在于 readOnly和dirty的搭配。readOnly 用到了atomic.Value不需要使用锁。能显著降低锁竞争，提高性能。
 
-2. 使用场景比较适合写入后，频繁读取的场景，能显著的降低锁竞争。
-3. 在上面列出的项目中，自己使用错了场景，自己的业务场景（存储一次后，马上全部读取一遍，就结束了操作）不仅没有任何降低使用锁的竞争的成本，还多了一次原子更新操作（将dirty的值赋值给readOnly），也就是自己的项目并不适合使用sync.Map
+1. 使用场景比较适合写入后，频繁读取的场景，能显著的降低锁竞争。
+2. 在上面列出的项目中，自己使用错了场景，自己的业务场景（存储一次后，马上全部读取一遍，就结束了操作）不仅没有任何降低使用锁的竞争的成本，还多了一次原子更新操作（将dirty的值赋值给readOnly），也就是自己的项目并不适合使用sync.Map
 
+实际的压测：
+
+各种场景下sync.Map的性能均不如自己通过map & mutex实现的性能，所以慎用sync.Map。

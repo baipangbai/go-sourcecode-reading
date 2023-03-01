@@ -1,4 +1,4 @@
-# CONtext源码研究背景
+# CONTEXT源码研究背景
 
 > 项目接手后，熟悉业务代码发现异常情况（[内存泄漏](https://stackoverflow.com/questions/44393995/what-happens-if-i-dont-cancel-a-context)），修复过程中发现代码没必要写那么复杂，就给优化了下。
 >

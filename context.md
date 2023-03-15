@@ -137,3 +137,140 @@ BenchmarkTimeAfterTimeout-8   	1000000000	         0.0002625 ns/op
 1. context.WithTimeout适合什么样的场景使用
 2. context.WithTimeout为何相比time.After性能差距这么大，具体如何实现的？哪里会多耗费性能？
 
+
+
+emptyCtx is never canceled
+
+```go
+// An emptyCtx is never canceled, has no values, and has no deadline. It is not
+// struct{}, since vars of this type must have distinct addresses.
+type emptyCtx int
+
+func (*emptyCtx) Deadline() (deadline time.Time, ok bool) {
+	return
+}
+
+func (*emptyCtx) Done() <-chan struct{} {
+	return nil
+}
+
+func (*emptyCtx) Err() error {
+	return nil
+}
+
+func (*emptyCtx) Value(key interface{}) interface{} {
+	return nil
+}
+
+func (e *emptyCtx) String() string {
+	switch e {
+	case background:
+		return "context.Background"
+	case todo:
+		return "context.TODO"
+	}
+	return "unknown empty Context"
+}
+
+
+var (
+	background = new(emptyCtx)
+	todo       = new(emptyCtx)
+)
+
+// Background returns a non-nil, empty Context. It is never canceled, has no
+// values, and has no deadline. It is typically used by the main function,
+// initialization, and tests, and as the top-level Context for incoming
+// requests.
+func Background() Context {
+	return background
+}
+
+// TODO returns a non-nil, empty Context. Code should use context.TODO when
+// it's unclear which Context to use or it is not yet available (because the
+// surrounding function has not yet been extended to accept a Context
+// parameter).
+func TODO() Context {
+	return todo
+}
+```
+
+
+
+# context.value()
+
+```go
+  //Packages that define a Context key should provide type-safe accessors
+	// for the values stored using that key:
+	
+	// Package user defines a User type that's stored in Contexts.
+	package user
+	
+	import "context"
+	
+	// User is the type of value stored in the Contexts.
+	type User struct {...}
+	
+	// key is an unexported type for keys defined in this package.
+	// This prevents collisions with keys defined in other packages.
+	type key int
+	
+	// userKey is the key for user.User values in Contexts. It is
+	// unexported; clients use user.NewContext and user.FromContext
+	// instead of using this key directly.
+	var userKey key
+	
+	// NewContext returns a new Context that carries value u.
+	func NewContext(ctx context.Context, u *User) context.Context {
+	 		return context.WithValue(ctx, userKey, u)
+	}
+	
+	// FromContext returns the User value stored in ctx, if any.
+	func FromContext(ctx context.Context) (*User, bool) {
+	 		u, ok := ctx.Value(userKey).(*User)
+	 		return u, ok
+	}
+```
+
+
+
+
+
+[官方使用案例和用法](https://go.dev/blog/context)
+
+```go
+func handleSearch(w http.ResponseWriter, req *http.Request) {
+    // ctx is the Context for this handler. Calling cancel closes the
+    // ctx.Done channel, which is the cancellation signal for requests
+    // started by this handler.
+    var (
+        ctx    context.Context
+        cancel context.CancelFunc
+    )
+    timeout, err := time.ParseDuration(req.FormValue("timeout"))
+    if err == nil {
+        // The request has a timeout, so create a context that is
+        // canceled automatically when the timeout expires.
+        ctx, cancel = context.WithTimeout(context.Background(), timeout)
+    } else {
+        ctx, cancel = context.WithCancel(context.Background())
+    }
+    defer cancel() // Cancel ctx as soon as handleSearch returns. 
+}
+
+//如果不使用cancel()，直接return，ctx不会回收吗？会导致内存泄漏？
+
+
+
+// The key type is unexported to prevent collisions with context keys defined in
+// other packages.
+type key int
+
+// userIPkey is the context key for the user IP address.  Its value of zero is
+// arbitrary.  If this package defined other context keys, they would have
+// different integer values.
+const userIPKey key = 0
+
+//其中的type key int，新定义的类型在go中是int的别名还是什么，判断是否相等会怎么判断？
+```
+

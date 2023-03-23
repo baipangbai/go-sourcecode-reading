@@ -139,7 +139,38 @@ BenchmarkTimeAfterTimeout-8   	1000000000	         0.0002625 ns/op
 
 
 
-emptyCtx is never canceled
+三大主体：
+
+```go
+type Context interface{
+  	Deadline() (deadline time.Time, ok bool)
+  	Done() <-chan struct{}
+  	Err() error
+  	Value(key interface{}) interface{}
+}
+
+// A cancelCtx can be canceled. When canceled, it also cancels any children
+// that implement canceler.
+type cancelCtx struct {
+  Context
+
+	mu       sync.Mutex            // protects following fields
+	done     chan struct{}         // created lazily, closed by first cancel call
+	children map[canceler]struct{} // set to nil by the first cancel call
+	err      error                 // set to non-nil by the first cancel call
+}
+
+// A canceler is a context type that can be canceled directly. The
+// implementations are *cancelCtx and *timerCtx.
+type canceler interface{
+ 	cancel(removeFromParent bool, err error)
+	Done() <-chan struct{}
+}
+```
+
+Context为规范，所有的初始都是这个规范
+
+
 
 ```go
 // An emptyCtx is never canceled, has no values, and has no deadline. It is not
@@ -195,8 +226,6 @@ func TODO() Context {
 }
 ```
 
-
-
 # context.value()
 
 ```go
@@ -232,10 +261,6 @@ func TODO() Context {
 	}
 ```
 
-
-
-
-
 [官方使用案例和用法](https://go.dev/blog/context)
 
 ```go
@@ -259,6 +284,8 @@ func handleSearch(w http.ResponseWriter, req *http.Request) {
 }
 
 //如果不使用cancel()，直接return，ctx不会回收吗？会导致内存泄漏？
+//If you use WithCancel, the goroutine will be held indefinitely in memory. However, if you use WithDeadline or WithTimeout without calling cancel, the goroutine will only be held until the timer expires.
+//This is still not best practice though, it's always best to call cancel as soon as you're done with the resource.
 
 
 

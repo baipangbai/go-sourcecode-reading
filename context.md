@@ -3,6 +3,8 @@
 > 项目接手后，熟悉业务代码发现异常情况（[内存泄漏](https://stackoverflow.com/questions/44393995/what-happens-if-i-dont-cancel-a-context)），修复过程中发现代码没必要写那么复杂，就给优化了下。
 >
 > 优化后发现性能竟然有提升，所以想看看为什么性能有提升。
+>
+> [官方使用案例和用法](https://go.dev/blog/context)
 
 ```go
 //go version 1.16.3
@@ -168,136 +170,7 @@ type canceler interface{
 }
 ```
 
-Context为规范，所有的初始都是这个规范
+Context为规范，所有的初始都是这个规范。cancelCtx里面匿名了Context，所以cancelCtx可以直接被看成Context interface{}
 
-
-
-```go
-// An emptyCtx is never canceled, has no values, and has no deadline. It is not
-// struct{}, since vars of this type must have distinct addresses.
-type emptyCtx int
-
-func (*emptyCtx) Deadline() (deadline time.Time, ok bool) {
-	return
-}
-
-func (*emptyCtx) Done() <-chan struct{} {
-	return nil
-}
-
-func (*emptyCtx) Err() error {
-	return nil
-}
-
-func (*emptyCtx) Value(key interface{}) interface{} {
-	return nil
-}
-
-func (e *emptyCtx) String() string {
-	switch e {
-	case background:
-		return "context.Background"
-	case todo:
-		return "context.TODO"
-	}
-	return "unknown empty Context"
-}
-
-
-var (
-	background = new(emptyCtx)
-	todo       = new(emptyCtx)
-)
-
-// Background returns a non-nil, empty Context. It is never canceled, has no
-// values, and has no deadline. It is typically used by the main function,
-// initialization, and tests, and as the top-level Context for incoming
-// requests.
-func Background() Context {
-	return background
-}
-
-// TODO returns a non-nil, empty Context. Code should use context.TODO when
-// it's unclear which Context to use or it is not yet available (because the
-// surrounding function has not yet been extended to accept a Context
-// parameter).
-func TODO() Context {
-	return todo
-}
-```
-
-# context.value()
-
-```go
-  //Packages that define a Context key should provide type-safe accessors
-	// for the values stored using that key:
-	
-	// Package user defines a User type that's stored in Contexts.
-	package user
-	
-	import "context"
-	
-	// User is the type of value stored in the Contexts.
-	type User struct {...}
-	
-	// key is an unexported type for keys defined in this package.
-	// This prevents collisions with keys defined in other packages.
-	type key int
-	
-	// userKey is the key for user.User values in Contexts. It is
-	// unexported; clients use user.NewContext and user.FromContext
-	// instead of using this key directly.
-	var userKey key
-	
-	// NewContext returns a new Context that carries value u.
-	func NewContext(ctx context.Context, u *User) context.Context {
-	 		return context.WithValue(ctx, userKey, u)
-	}
-	
-	// FromContext returns the User value stored in ctx, if any.
-	func FromContext(ctx context.Context) (*User, bool) {
-	 		u, ok := ctx.Value(userKey).(*User)
-	 		return u, ok
-	}
-```
-
-[官方使用案例和用法](https://go.dev/blog/context)
-
-```go
-func handleSearch(w http.ResponseWriter, req *http.Request) {
-    // ctx is the Context for this handler. Calling cancel closes the
-    // ctx.Done channel, which is the cancellation signal for requests
-    // started by this handler.
-    var (
-        ctx    context.Context
-        cancel context.CancelFunc
-    )
-    timeout, err := time.ParseDuration(req.FormValue("timeout"))
-    if err == nil {
-        // The request has a timeout, so create a context that is
-        // canceled automatically when the timeout expires.
-        ctx, cancel = context.WithTimeout(context.Background(), timeout)
-    } else {
-        ctx, cancel = context.WithCancel(context.Background())
-    }
-    defer cancel() // Cancel ctx as soon as handleSearch returns. 
-}
-
-//如果不使用cancel()，直接return，ctx不会回收吗？会导致内存泄漏？
-//If you use WithCancel, the goroutine will be held indefinitely in memory. However, if you use WithDeadline or WithTimeout without calling cancel, the goroutine will only be held until the timer expires.
-//This is still not best practice though, it's always best to call cancel as soon as you're done with the resource.
-
-
-
-// The key type is unexported to prevent collisions with context keys defined in
-// other packages.
-type key int
-
-// userIPkey is the context key for the user IP address.  Its value of zero is
-// arbitrary.  If this package defined other context keys, they would have
-// different integer values.
-const userIPKey key = 0
-
-//其中的type key int，新定义的类型在go中是int的别名还是什么，判断是否相等会怎么判断？
-```
+cancelCtx为主要的实现方，最重要的结构。
 

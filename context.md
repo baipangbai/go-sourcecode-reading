@@ -5,6 +5,8 @@
 > 优化后发现性能竟然有提升，所以想看看为什么性能有提升。
 >
 > [官方使用案例和用法](https://go.dev/blog/context)
+>
+> [time.After example and notice](https://github.com/hellofresh/health-go/issues/89)
 
 ```go
 //go version 1.16.3

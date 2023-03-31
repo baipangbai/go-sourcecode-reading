@@ -62,6 +62,35 @@ func BenchmarkTimeAfter(b *testing.B) {
 	// fmt.Println("result is", result)
 }
 
+//time.After()，调用后必须在time elapse后才会销毁，所以会存在程序都执行完毕了，timer还有大量的没有销毁
+func BenchmarkTimeAfterCancel(b *testing.B) {
+	var result int
+	intCh := make(chan int, 1)
+
+	a := 11
+	go func() {
+		intCh <- double(a)
+	}()
+  
+delay := time.NewTimer(200 * time.Millisecond)
+
+	select {
+	case result = <-intCh:
+    if !delay.Stop() {
+			<-delay.C
+		}
+		if result%2 == 0 {
+			// fmt.Println("fail")
+			return
+		}
+  case <-delay.C:
+		// fmt.Println("timeout")
+		return
+	}
+	// fmt.Println("result is", result)
+}
+
+
 //项目优化之前的代码，超时
 func BenchmarkContextTimeout(b *testing.B) {
 	ctx := context.TODO()
@@ -115,6 +144,9 @@ func BenchmarkTimeAfterTimeout(b *testing.B) {
 	// fmt.Println("result is", result)
 
 }
+
+
+
 
 //公用函数
 func double(a int) int {

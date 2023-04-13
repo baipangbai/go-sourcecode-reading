@@ -1,12 +1,10 @@
 # CONTEXT源码研究背景
 
-> 项目接手后，熟悉业务代码发现异常情况（[内存泄漏](https://stackoverflow.com/questions/44393995/what-happens-if-i-dont-cancel-a-context)），修复过程中发现代码没必要写那么复杂，就给优化了下。
+> 项目接手后，熟悉业务代码发现异常情况，排查后发现其实不会引起内存些咧，但是发现代码没必要写那么复杂，就给优化了下。
 >
 > 优化后发现性能竟然有提升，所以想看看为什么性能有提升。
->
-> [官方使用案例和用法](https://go.dev/blog/context)
->
-> [time.After example and notice](https://github.com/hellofresh/health-go/issues/89)
+
+WithCancel()返回的cancel()函数不调用会引起内存泄漏，但是WithTimeout()返回的cancel()即使不调用cancel()，time esplae后依然后调用cancel()，不过为了规范，建议都普遍在函数结束后调用cancel()。避免看起来懵，还要记有的调用有的不调用。
 
 ```go
 //go version 1.16.3
@@ -277,3 +275,12 @@ func TestParentCtx(t *testing.T) {
 }
 ```
 
+
+
+# 参考文档
+
+- [ 内存泄漏](https://stackoverflow.com/questions/44393995/what-happens-if-i-dont-cancel-a-context)
+
+- [官方使用案例和用法](https://go.dev/blog/context)
+
+- [time.After example and notice](https://github.com/hellofresh/health-go/issues/89)

@@ -204,7 +204,76 @@ type canceler interface{
 }
 ```
 
-Context为规范，所有的初始都是这个规范。cancelCtx里面匿名了Context，所以cancelCtx可以直接被看成Context interface{}
+**Context为规范，所有的初始都是这个规范。cancelCtx里面匿名了Context，所以cancelCtx可以直接被看成Context interface{}**
 
 cancelCtx为主要的实现方，最重要的结构。
+
+
+
+
+
+cancelCtx 默认初始化了一个，var cancelCtxKey int，里面有对cancelCtx的调用。
+
+具体逻辑为：
+
+```go
+func (c *cancelCtx) Value(key interface{}) interface{} {
+	if key == &cancelCtxKey {
+		return c
+	}
+	return c.Context.Value(key)
+}
+
+
+parentCancelCtx中，有一行代码为 
+`p, ok := parent.Value(&cancelCtxKey).(*cancelCtx)`
+
+这一行只要parent为cancelCtx类型，就会返回Context上下文中定义的cancelCtx
+```
+
+context中的设计，只想外暴露了规范，也就是Context interface{}，具体的实现为cancelCtx结构体和实现细节隐藏了。这种实现方式值得琢磨，为什么是否值得学习。
+
+
+
+注意context.go的实现中，WithValue和WithCancel、WithDeadline不同
+
+- WithValue底层的结构体为valueCtx
+- WithCancel、WithDeadline底层结构体为cancelCtx
+
+
+
+注意的是其中context，propagateCancel()中有一个新起goroutine来检测用户自定的Context是否关闭的逻辑。
+
+```go
+//下面代码可触发对应的逻辑。注意代码例子不完善，仅仅为了触发该逻辑。不能直接放到真实的业务环境运行，否则会出问题。
+
+type MyContext struct {
+}
+
+func (*MyContext) Deadline() (deadline time.Time, ok bool) {
+	return
+}
+
+func (*MyContext) Done() <-chan struct{} {
+	return make(chan struct{})
+}
+
+func (*MyContext) Err() error {
+	return nil
+}
+
+func (*MyContext) Value(key interface{}) interface{} {
+	return nil
+}
+
+func TestParentCtx(t *testing.T) {
+	childCtx, childFun := WithCancel(&MyContext{})
+
+	childFun()
+
+	fmt.Println("test childCtx", childCtx)
+
+	time.Sleep(3 * time.Second)
+}
+```
 

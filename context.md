@@ -9,7 +9,7 @@ WithCancel()返回的cancel()函数不调用会引起内存泄漏，但是WithTi
 ```go
 //go version 1.16.3
 
-//项目优化之前的代码（修复了没有cancel()，会导致内存泄漏问题），非超时
+//项目优化之前的代码（修复了没有cancel()，看起来像是有内存泄漏但是其实没有），非超时
 func BenchmarkContext(b *testing.B) {
 	ctx := context.TODO()
 	tmpCtx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)

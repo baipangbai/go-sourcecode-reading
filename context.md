@@ -174,9 +174,8 @@ BenchmarkTimeAfterTimeout-8   	1000000000	         0.0002625 ns/op
 
 # Context源码解读
 
-三大主体
-
 ```go
+//三大主体
 type Context interface{
   	Deadline() (deadline time.Time, ok bool)
   	Done() <-chan struct{}
@@ -209,14 +208,16 @@ cancelCtx为主要的实现方，最重要的结构体。
 
 ### cancelCtx
 
-每次调用WithCancel()，都会在传递进来的Context基础上，newCancelCtx()，会将Context包在cancelCtx结构体中，且cancelCtx带有了各种定义的方法。
+每次调用`WithCancel()`，都会在传递进来的`Context`基础上`newCancelCtx()`，生成`c（child）`，会将`Context`包在`cancelCtx`结构体中，且`newCancel()`生成的`cancelCtx`带有了各种源码中定义的方法。
 
-源码还定义了一个`var cancelCtxKey int`，该定义默认使得cancelCtxKey有了初始值。`p, ok := parent.Value(&cancelCtxKey).(*cancelCtx)
+源码还定义了一个`var cancelCtxKey int`，该定义默认使得cancelCtxKey有了初始值。
+
+`p, ok := parent.Value(&cancelCtxKey).(*cancelCtx)
 	if !ok {
 		return nil, false
 	}`
 
-👆上面函数的`&cancelCtxKey`值，就是var cancelCtxKey int的初始值。这么定义该方法主要是为了返回直接parent（如果parent为cancelCtx类型的话）的cancelCtx值，方便后面直接调用`parent.(cancelCtx).children`等内部结构
+👆上面函数的`&cancelCtxKey`值，就是`var cancelCtxKey int`的初始值。这么定义该方法主要是为了返回直接`parent`（如果`parent`为`cancelCtx`类型的话）的`cancelCtx`值，方便后面直接调用`parent.(cancelCtx).children`等内部结构
 
 `func (c *cancelCtx) Value(key interface{}) interface{} {
 	if key == &cancelCtxKey {
@@ -227,49 +228,60 @@ cancelCtx为主要的实现方，最重要的结构体。
 
 ### Context
 
-context中的设计，只向外暴露了规范，也就是Context interface{}，具体的实现为cancelCtx结构体和实现细节隐藏了。
+`context`源码中的设计，只向外暴露了规范，也就是`Context interface{}`，具体的实现为`cancelCtx`结构体，对外该实现细节隐藏了。
 
-**这种实现方式值得琢磨，为什么是否值得学习。**
+**这种实现方式值得学习，只对外暴露了规范。实现细节隐藏**
 
-注意context.go的实现中，WithValue和WithCancel、WithDeadline不同
+注意`context.go`源码的实现中，`WithValue`和`WithCancel`、`WithDeadline`不同
 
-- WithValue底层的结构体为valueCtx
-- WithCancel、WithDeadline底层结构体为cancelCtx
+- `WithValue`底层的结构体为`valueCtx`
+- `WithCancel`、`WithDeadline`底层结构体为`cancelCtx`
 
 ### 一个特殊的地方
 
-propagateCancel()中有一个新起goroutine来检测用户自定的Context是否关闭的逻辑。主要是针对用户自定义实现了Context，而不是使用源码中定义的Context
+`propagateCancel()`中有一个新起`goroutine`来检测用户自定义的`Context`是否关闭的逻辑。主要是针对用户自定义实现了`Context`，而不是使用源码中定义的`Context`
 
 ```go
 //下面代码可触发对应的逻辑。注意代码例子不完善，仅仅为了触发该逻辑。不能直接放到真实的业务环境运行，否则会出问题。
 
 type MyContext struct {
+	done chan struct{} // created lazily, closed by first cancel call
 }
 
-func (*MyContext) Deadline() (deadline time.Time, ok bool) {
+func (m *MyContext) Deadline() (deadline time.Time, ok bool) {
 	return
 }
 
-func (*MyContext) Done() <-chan struct{} {
-	return make(chan struct{})
+func (m *MyContext) Done() <-chan struct{} {
+	if m.done == nil {
+		m.done = make(chan struct{})
+	}
+	d := m.done
+	return d
 }
 
-func (*MyContext) Err() error {
+func (m *MyContext) Err() error {
+	return errors.New("mycontext err")
+}
+
+func (m *MyContext) Value(key interface{}) interface{} {
 	return nil
 }
 
-func (*MyContext) Value(key interface{}) interface{} {
-	return nil
+func (m *MyContext) cancel() {
+	close(m.done)
 }
 
 func TestParentCtx(t *testing.T) {
-	childCtx, childFun := WithCancel(&MyContext{})
+	myCtx := &MyContext{}
+	childCtx, childFun := WithCancel(myCtx)
 
-	childFun()
+	myCtx.cancel()
 
 	fmt.Println("test childCtx", childCtx)
 
 	time.Sleep(3 * time.Second)
+	childFun()
 }
 ```
 

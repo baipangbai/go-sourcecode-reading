@@ -1,10 +1,12 @@
 # CONTEXT源码研究背景
 
-> 项目接手后，熟悉业务代码发现异常情况，排查后发现其实不会引起内存些咧，但是发现代码没必要写那么复杂，就给优化了下。
+> 项目接手后，熟悉业务代码发现疑似异常代码，排查后发现其实不会引起内存泄漏。但发现代码没必要写那么复杂，就给优化了下。
 >
 > 优化后发现性能竟然有提升，所以想看看为什么性能有提升。
 
-WithCancel()返回的cancel()函数不调用会引起内存泄漏，但是WithTimeout()返回的cancel()即使不调用cancel()，timeout elapses后依然后调用cancel()，不过为了规范，建议都普遍在函数结束后调用cancel()。避免看起来懵，还要记有的调用有的不调用。
+WithCancel()返回的cancel()函数不调用会引起内存泄漏，但是WithTimeout()返回的cancel()即使不调用cancel()，timeout elapses后依然会调用cancel()。
+
+为了规范，建议都普遍在函数结束后调用cancel()。避免看起来懵，还要记得有的调用有的不调用。
 
 ```go
 //go version 1.16.3
@@ -13,11 +15,11 @@ WithCancel()返回的cancel()函数不调用会引起内存泄漏，但是WithTi
 func BenchmarkContext(b *testing.B) {
 	ctx := context.TODO()
 	tmpCtx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
-	//project before not add (defer cancel()),if not,memory leak
+	
+  //project before not add (defer cancel())
 	defer cancel()
 
 	intCh := make(chan int, 1)
-
 	a := 11
 	go func() {
 		intCh <- double(a)
@@ -39,7 +41,7 @@ func BenchmarkContext(b *testing.B) {
 }
 
 
-//项目优化之后的代码，非超时
+//time.After()，调用后必须在timeout elapses后才会销毁，所以会存在程序都执行完毕了，timer还有大量的没有销毁
 func BenchmarkTimeAfter(b *testing.B) {
 	var result int
 	intCh := make(chan int, 1)
@@ -62,7 +64,7 @@ func BenchmarkTimeAfter(b *testing.B) {
 	// fmt.Println("result is", result)
 }
 
-//time.After()，调用后必须在time elapse后才会销毁，所以会存在程序都执行完毕了，timer还有大量的没有销毁
+//use !delay.Stop(), if not timeout,timer destroy not util timeout elapses
 func BenchmarkTimeAfterCancel(b *testing.B) {
 	var result int
 	intCh := make(chan int, 1)
@@ -72,8 +74,7 @@ func BenchmarkTimeAfterCancel(b *testing.B) {
 		intCh <- double(a)
 	}()
   
-delay := time.NewTimer(200 * time.Millisecond)
-
+	delay := time.NewTimer(200 * time.Millisecond)
 	select {
 	case result = <-intCh:
     if !delay.Stop() {
@@ -144,8 +145,6 @@ func BenchmarkTimeAfterTimeout(b *testing.B) {
 	// fmt.Println("result is", result)
 
 }
-
-
 
 
 //公用函数

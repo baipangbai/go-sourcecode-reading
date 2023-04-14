@@ -274,14 +274,14 @@ func (m *MyContext) cancel() {
 
 func TestParentCtx(t *testing.T) {
 	myCtx := &MyContext{}
-	childCtx, childFun := WithCancel(myCtx)
+	childCtx, childCancelFun := WithCancel(myCtx)
 
 	myCtx.cancel()
 
 	fmt.Println("test childCtx", childCtx)
 
 	time.Sleep(3 * time.Second)
-	childFun()
+	childCancelFun()
 }
 ```
 

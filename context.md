@@ -172,7 +172,9 @@ BenchmarkTimeAfterTimeout-8   	1000000000	         0.0002625 ns/op
 
 
 
-三大主体：
+# Context源码解读
+
+三大主体
 
 ```go
 type Context interface{
@@ -203,43 +205,40 @@ type canceler interface{
 
 **Context为规范，所有的初始都是这个规范。cancelCtx里面匿名了Context，所以cancelCtx可以直接被看成Context interface{}**
 
-cancelCtx为主要的实现方，最重要的结构。
+cancelCtx为主要的实现方，最重要的结构体。
 
+### cancelCtx
 
+每次调用WithCancel()，都会在传递进来的Context基础上，newCancelCtx()，会将Context包在cancelCtx结构体中，且cancelCtx带有了各种定义的方法。
 
+源码还定义了一个`var cancelCtxKey int`，该定义默认使得cancelCtxKey有了初始值。`p, ok := parent.Value(&cancelCtxKey).(*cancelCtx)
+	if !ok {
+		return nil, false
+	}`
 
+👆上面函数的`&cancelCtxKey`值，就是var cancelCtxKey int的初始值。这么定义该方法主要是为了返回直接parent（如果parent为cancelCtx类型的话）的cancelCtx值，方便后面直接调用`parent.(cancelCtx).children`等内部结构
 
-cancelCtx 默认初始化了一个，var cancelCtxKey int，里面有对cancelCtx的调用。
-
-具体逻辑为：
-
-```go
-func (c *cancelCtx) Value(key interface{}) interface{} {
+`func (c *cancelCtx) Value(key interface{}) interface{} {
 	if key == &cancelCtxKey {
 		return c
 	}
 	return c.Context.Value(key)
-}
+}`
 
+### Context
 
-parentCancelCtx中，有一行代码为 
-`p, ok := parent.Value(&cancelCtxKey).(*cancelCtx)`
+context中的设计，只向外暴露了规范，也就是Context interface{}，具体的实现为cancelCtx结构体和实现细节隐藏了。
 
-这一行只要parent为cancelCtx类型，就会返回Context上下文中定义的cancelCtx
-```
-
-context中的设计，只想外暴露了规范，也就是Context interface{}，具体的实现为cancelCtx结构体和实现细节隐藏了。这种实现方式值得琢磨，为什么是否值得学习。
-
-
+**这种实现方式值得琢磨，为什么是否值得学习。**
 
 注意context.go的实现中，WithValue和WithCancel、WithDeadline不同
 
 - WithValue底层的结构体为valueCtx
 - WithCancel、WithDeadline底层结构体为cancelCtx
 
+### 一个特殊的地方
 
-
-注意的是其中context，propagateCancel()中有一个新起goroutine来检测用户自定的Context是否关闭的逻辑。
+propagateCancel()中有一个新起goroutine来检测用户自定的Context是否关闭的逻辑。主要是针对用户自定义实现了Context，而不是使用源码中定义的Context
 
 ```go
 //下面代码可触发对应的逻辑。注意代码例子不完善，仅仅为了触发该逻辑。不能直接放到真实的业务环境运行，否则会出问题。

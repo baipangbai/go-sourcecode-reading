@@ -4,7 +4,7 @@
 >
 > 优化后发现性能竟然有提升，所以想看看为什么性能有提升。
 
-WithCancel()返回的cancel()函数不调用会引起内存泄漏，但是WithTimeout()返回的cancel()即使不调用cancel()，time esplae后依然后调用cancel()，不过为了规范，建议都普遍在函数结束后调用cancel()。避免看起来懵，还要记有的调用有的不调用。
+WithCancel()返回的cancel()函数不调用会引起内存泄漏，但是WithTimeout()返回的cancel()即使不调用cancel()，timeout elapses后依然后调用cancel()，不过为了规范，建议都普遍在函数结束后调用cancel()。避免看起来懵，还要记有的调用有的不调用。
 
 ```go
 //go version 1.16.3

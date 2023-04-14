@@ -230,7 +230,7 @@ cancelCtx为主要的实现方，最重要的结构体。
 
 `context`源码中的设计，只向外暴露了规范，也就是`Context interface{}`，具体的实现为`cancelCtx`结构体，对外该实现细节隐藏了。
 
-**这种实现方式值得学习，只对外暴露了规范。实现细节隐藏**
+**这种实现方式值得学习，只对外暴露了规范。实现细节隐藏。内部交互也是基于interface{}，比如cancelCtx、和ValueCtx**
 
 注意`context.go`源码的实现中，`WithValue`和`WithCancel`、`WithDeadline`不同
 
